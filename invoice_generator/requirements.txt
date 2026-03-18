@@ -1,0 +1,7 @@
+Flask==3.0.0
+WeasyPrint==62.1
+opencv-python==4.9.0.80
+pytesseract==0.3.10
+pyzbar==0.1.9
+num2words==0.5.13
+openpyxl==3.1.2

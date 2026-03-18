@@ -1,0 +1,6 @@
+services:
+  - type: web
+    name: pharmacy-invoice-generator
+    env: docker
+    plan: free
+    region: ohio

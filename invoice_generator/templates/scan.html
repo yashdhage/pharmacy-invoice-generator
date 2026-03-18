@@ -1,0 +1,259 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div x-data="scannerApp()" class="max-w-6xl mx-auto space-y-6">
+    
+    <!-- Header -->
+    <div class="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-xl shadow-md p-6 text-white flex justify-between items-center">
+        <div>
+            <h2 class="text-2xl font-bold"><i class="fa-solid fa-camera-viewfinder mr-2"></i>Product Scanner</h2>
+            <p class="text-purple-100 text-sm mt-1">Point your camera at the medicine label to extract details via AI.</p>
+        </div>
+        <div>
+            <button @click="toggleCamera" class="bg-white text-purple-600 hover:bg-gray-100 font-semibold py-2 px-4 rounded shadow transition-colors">
+                <i class="fa-solid fa-video" x-show="!cameraActive"></i> 
+                <i class="fa-solid fa-video-slash" x-show="cameraActive" x-cloak></i>
+                <span x-text="cameraActive ? 'Stop Camera' : 'Start Camera'"></span>
+            </button>
+        </div>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <!-- Camera View Area -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col items-center p-4">
+            <h3 class="text-lg font-semibold text-gray-700 w-full mb-3 border-b pb-2">Camera Feed</h3>
+            
+            <div class="relative w-full aspect-video bg-gray-900 rounded-lg overflow-hidden flex items-center justify-center">
+                <video x-ref="videoElement" autoplay playsinline class="w-full h-full object-cover" x-show="cameraActive"></video>
+                <div x-show="!cameraActive" class="text-gray-500 text-center flex flex-col items-center">
+                    <i class="fa-solid fa-camera fa-3x mb-3 text-gray-600"></i>
+                    <p>Camera is currently off</p>
+                    <button @click="toggleCamera" class=" mt-4 bg-purple-100 text-purple-700 px-4 py-2 rounded-md hover:bg-purple-200 text-sm font-medium">Click to Start</button>
+                </div>
+                
+                <!-- Scanner overlay UI -->
+                <div x-show="cameraActive" class="absolute inset-0 pointer-events-none border-2 border-purple-500 opacity-50 m-8 rounded"></div>
+                
+                <!-- Scanning animation overlay -->
+                <div x-show="isScanning" class="absolute inset-0 bg-purple-900 bg-opacity-40 flex flex-col items-center justify-center text-white" x-cloak>
+                    <i class="fa-solid fa-spinner fa-spin fa-3x mb-4"></i>
+                    <p class="font-medium animate-pulse">Running OCR & Extraction...</p>
+                </div>
+            </div>
+            
+            <canvas x-ref="canvasElement" class="hidden"></canvas>
+
+            <button @click="captureAndScan" x-show="cameraActive" :disabled="isScanning" :class="{'opacity-50 cursor-not-allowed': isScanning}" class="mt-4 w-full bg-purple-600 hover:bg-purple-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition-colors flex items-center justify-center gap-2">
+                <i class="fa-solid fa-crosshairs"></i> Capture & Extract Text
+            </button>
+        </div>
+
+        <!-- Extraction Results / Editor Area -->
+        <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden flex flex-col p-4">
+            <h3 class="text-lg font-semibold text-gray-700 w-full mb-3 border-b pb-2">Extracted Details</h3>
+            
+            <div x-show="rawText" class="mb-4 text-xs font-mono bg-gray-100 text-gray-700 p-3 rounded h-32 overflow-y-auto" x-cloak>
+                <div class="text-gray-500 mb-1 border-b border-gray-200 pb-1 font-sans font-semibold">Raw OCR Output:</div>
+                <pre x-text="rawText" class="whitespace-pre-wrap"></pre>
+            </div>
+
+            <div class="flex-grow space-y-4">
+                <p class="text-sm text-gray-500 italic" x-show="!extractedName">Capture an image to auto-fill these fields.</p>
+                
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Product Name</label>
+                    <input type="text" x-model="extractedName" class="w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm border p-2 text-gray-800" placeholder="e.g. Paracetamol 500mg">
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Batch No.</label>
+                        <input type="text" x-model="extractedBatch" class="w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm border p-2 text-gray-800" placeholder="A123">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Expiry Date</label>
+                        <input type="text" x-model="extractedExpiry" class="w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm border p-2 text-gray-800" placeholder="10/25">
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Quantity</label>
+                        <input type="number" x-model="extractedQty" class="w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm border p-2 text-gray-800 text-right">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Rate (₹)</label>
+                        <input type="number" step="0.01" x-model="extractedRate" class="w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 sm:text-sm border p-2 text-gray-800 text-right">
+                    </div>
+                </div>
+            </div>
+
+            <button @click="addToInvoice" :disabled="!extractedName" :class="{'opacity-50 cursor-not-allowed': !extractedName}" class="mt-6 w-full bg-indigo-600 hover:bg-indigo-700 text-white font-bold py-3 px-4 rounded-lg shadow-md transition-colors flex items-center justify-center gap-2">
+                <i class="fa-solid fa-file-import"></i> Save Item & Send to Manual Form
+            </button>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.addEventListener('alpine:init', () => {
+        Alpine.data('scannerApp', () => ({
+            cameraActive: false,
+            isScanning: false,
+            stream: null,
+            rawText: '',
+            
+            // Extracted fields
+            extractedName: '',
+            extractedBatch: '',
+            extractedExpiry: '',
+            extractedQty: 1,
+            extractedRate: 0.0,
+            
+            async toggleCamera() {
+                if (this.cameraActive) {
+                    this.stopCamera();
+                } else {
+                    await this.startCamera();
+                }
+            },
+            
+            async startCamera() {
+                try {
+                    this.stream = await navigator.mediaDevices.getUserMedia({ 
+                        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } } 
+                    });
+                    this.$refs.videoElement.srcObject = this.stream;
+                    this.cameraActive = true;
+                } catch (err) {
+                    console.error("Error accessing camera:", err);
+                    alert("Could not access the camera. Please ensure you have granted permissions.");
+                }
+            },
+            
+            stopCamera() {
+                if (this.stream) {
+                    this.stream.getTracks().forEach(track => track.stop());
+                    this.$refs.videoElement.srcObject = null;
+                }
+                this.cameraActive = false;
+            },
+            
+            async captureAndScan() {
+                if (!this.cameraActive) return;
+                
+                this.isScanning = true;
+                this.rawText = '';
+                
+                // Draw current video frame to canvas
+                const video = this.$refs.videoElement;
+                const canvas = this.$refs.canvasElement;
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+                
+                // Get base64 image data
+                const imageData = canvas.toDataURL('image/jpeg', 0.8);
+                
+                try {
+                    // Send to backend API
+                    const response = await fetch('/api/scan', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ image: imageData })
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (result.success) {
+                        this.processOcrResults(result.text_lines, result.barcodes);
+                    } else {
+                        alert("OCR Processing failed: " + result.error);
+                    }
+                } catch (error) {
+                    console.error("OCR API error:", error);
+                    alert("Network error during OCR processing.");
+                } finally {
+                    this.isScanning = false;
+                }
+            },
+            
+            processOcrResults(lines, barcodes) {
+                // Here we deploy a naive heuristic to extract data from raw text lines.
+                // In a production app, this would use regex or deeper NLP mapping.
+                
+                this.rawText = lines.join('\n');
+                
+                // Reset extraction
+                this.extractedName = '';
+                this.extractedBatch = '';
+                this.extractedExpiry = '';
+                this.extractedRate = 0;
+                
+                if (lines.length > 0) {
+                    // Try to grab the first substantial line as product name
+                    const nameRegex = /^[A-Za-z0-9\s\-]{4,}$/;
+                    for(let line of lines) {
+                        if(nameRegex.test(line) && line.length > 5 && !line.toLowerCase().includes('batch') && !line.toLowerCase().includes('mrp')) {
+                            this.extractedName = line.trim();
+                            break;
+                        }
+                    }
+                    if(!this.extractedName) this.extractedName = lines[0] || 'Unknown Product';
+                }
+                
+                // Look for MRP/Rate (e.g. "MRP Rs. 150.00" or just "150.00")
+                const rateRegex = /(?:MRP|Rs|₹|Price)[\.\s:]*([\d\,\.]+)/i;
+                for(let line of lines) {
+                    let match = line.match(rateRegex);
+                    if (match && match[1]) {
+                        this.extractedRate = parseFloat(match[1].replace(',', '')) || 0;
+                        break;
+                    }
+                }
+                
+                // Look for Batch
+                const batchRegex = /(?:B\.No|Batch|B NO|LOT)[\.\:\s]*([A-Za-z0-9\-]+)/i;
+                for(let line of lines) {
+                    let match = line.match(batchRegex);
+                    if (match && match[1]) {
+                        this.extractedBatch = match[1];
+                        break;
+                    }
+                }
+                
+                // Look for Expiry
+                const expiryRegex = /(?:EXP|Expiry)[\.\:\s]*([0-9]{2}[\/\-][0-9]{2,4})/i;
+                for(let line of lines) {
+                    let match = line.match(expiryRegex);
+                    if (match && match[1]) {
+                        this.extractedExpiry = match[1];
+                        break;
+                    }
+                }
+            },
+            
+            addToInvoice() {
+                // In a real flow, we'd save it to localStorage or a backend session cart.
+                // Here we just use localStorage to pass data to manual.html
+                const item = {
+                    id: Date.now(),
+                    name: this.extractedName,
+                    hsn: '',
+                    batch: this.extractedBatch,
+                    expiry: this.extractedExpiry,
+                    qty: this.extractedQty,
+                    rate: this.extractedRate
+                };
+                
+                let cart = JSON.parse(localStorage.getItem('scannedItems') || '[]');
+                cart.push(item);
+                localStorage.setItem('scannedItems', JSON.stringify(cart));
+                
+                alert("Item saved to cart! Navigating to manual entry to finalize...");
+                this.stopCamera();
+                window.location.href = '/manual';
+            }
+        }));
+    });
+</script>
+{% endblock %}

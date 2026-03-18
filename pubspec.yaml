@@ -1,0 +1,21 @@
+name: pharmacy_billing_app
+description: A pharmacy billing app similar to a tax invoice.
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=2.19.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.2
+  intl: ^0.18.1
+  sqflite: ^2.2.8+3
+  path_provider: ^2.0.16
+  path: ^1.8.4
+  printing: ^5.11.0
+  screenshot: ^1.5.2
+
+flutter:
+  uses-material-design: true
